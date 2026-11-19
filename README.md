@@ -139,3 +139,7 @@ DATABASE_URL = "postgresql+psycopg2://USER:PASSWORD@HOST:PORT/DATABASE"
 The PostgreSQL database must already contain the `hourly_measurements` table and
 data produced by the ETL pipeline.
 
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
