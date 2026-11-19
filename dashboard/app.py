@@ -10,7 +10,7 @@ from cities import CITIES  # noqa: E402
 
 st.set_page_config(
     page_title="Tunisia Weather & Air Quality",
-    page_icon="🌍",
+    page_icon="",
     layout="wide",
 )
 
@@ -55,7 +55,7 @@ def latest_per_city(data: pd.DataFrame) -> pd.DataFrame:
     return source.sort_values("time").groupby("city").tail(1).reset_index(drop=True)
 
 
-st.title("🌍 Tunisia Weather & Air Quality Monitor")
+st.title(" Tunisia Weather & Air Quality Monitor")
 st.caption(
     "Hourly weather and air quality for the 24 governorates of Tunisia, "
     "collected every day by an automated data pipeline."
