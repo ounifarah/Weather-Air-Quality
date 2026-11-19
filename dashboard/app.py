@@ -21,8 +21,7 @@ LABELS = {
     "pm10": "PM10 (µg/m³)",
     "pm2_5": "PM2.5 (µg/m³)",
 }
-DEFAULT_TREND_CITIES = ["Tunis", "Sfax", "Sousse", "Gabes", "Bizerte"]
-
+DEFAULT_TREND_CITIES = ["Tunis", "Sfax", "Sousse", "Gabes", "Bizerte", "Ariana", "Nabeul", "Monastir", "Kairouan", "Gafsa", "Mahdia", "Kasserine", "Kef", "Jendouba", "Medenine", "Tataouine", "Tozeur", "Kebili", "Siliana", "Zaghouan", "Beja"]
 
 def database_url() -> str:
     try:
