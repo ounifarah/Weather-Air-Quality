@@ -4,6 +4,7 @@ A Streamlit website that displays hourly weather and air-quality forecasts for
 Tunisia's 24 governorates. The application reads historical and forecast data
 from PostgreSQL and presents current values, rankings, trends, a map, and a CSV
 download.
+> **Live demo:** [Tunisia Weather & Air Quality Monitor](https://weather-air-quality-c3jg846wcjhwdcjyb75dg3.streamlit.app/)
 
 ## Website features
 
