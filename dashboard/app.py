@@ -10,7 +10,7 @@ from cities import CITIES  # noqa: E402
 
 st.set_page_config(
     page_title="Tunisia Weather & Air Quality",
-    page_icon="🌍",
+    page_icon="",
     layout="wide",
 )
 
@@ -55,17 +55,21 @@ def latest_per_city(data: pd.DataFrame) -> pd.DataFrame:
     return source.sort_values("time").groupby("city").tail(1).reset_index(drop=True)
 
 
-st.title("🌍 Tunisia Weather & Air Quality Monitor")
+st.title(" Tunisia Weather & Air Quality Monitor")
 st.caption(
     "Hourly weather and air quality for the 24 governorates of Tunisia, "
     "collected every day by an automated data pipeline."
 )
 
-df = load_data()
+try:
+    df = load_data()
+except Exception:
+    st.error("Could not reach the database. It may be waking up, so refresh in a few seconds.")
+    st.stop()
+
 if df.empty:
     st.warning("The database is empty. Run the pipeline first.")
     st.stop()
-
 current = latest_per_city(df)
 
 with st.sidebar:
@@ -85,16 +89,19 @@ with tab_overview:
     k1.metric("Cities tracked", df["city"].nunique())
 
     hottest = current.loc[current["temperature_2m"].idxmax()]
-    k2.metric("Hottest now", hottest["city"], f"{hottest['temperature_2m']:.1f} °C")
-
+    k2.metric(f"Hottest now · {hottest['city']}", f"{hottest['temperature_2m']:.1f} °C")  
+    
     pm_rows = current.dropna(subset=["pm10"])
     if not pm_rows.empty:
         dusty = pm_rows.loc[pm_rows["pm10"].idxmax()]
-        k3.metric("Highest PM10 now", dusty["city"], f"{dusty['pm10']:.1f} µg/m³")
-
+        k3.metric(
+            f"Highest PM10 now · {dusty['city']}",
+            f"{dusty['pm10']:.1f} µg/m³",
+            delta="High",
+            delta_color="inverse",
+        )
     windy = current.loc[current["wind_speed_10m"].idxmax()]
-    k4.metric("Windiest now", windy["city"], f"{windy['wind_speed_10m']:.1f} km/h")
-
+    k4.metric(f"Windiest now · {windy['city']}", f"{windy['wind_speed_10m']:.1f} km/h")
     left, right = st.columns([1, 1])
     with left:
         st.subheader(f"Ranking: {LABELS[metric]}")
