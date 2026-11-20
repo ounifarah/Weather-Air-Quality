@@ -1,20 +1,15 @@
 import os
 import sys
-from typing import Optional
 
-import altair as alt
 import pandas as pd
+import plotly.express as px
 import streamlit as st
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "src"))
 from cities import CITIES  # noqa: E402
 
-st.set_page_config(
-    page_title="Tunisia Weather & Air Quality",
-    page_icon="🌍",
-    layout="wide",
-)
+st.set_page_config(page_title="Tunisia Weather & Air Quality", layout="wide")
 
 LABELS = {
     "temperature_2m": "Temperature (°C)",
@@ -23,42 +18,71 @@ LABELS = {
     "pm10": "PM10 (µg/m³)",
     "pm2_5": "PM2.5 (µg/m³)",
 }
+UNITS = {
+    "temperature_2m": "°C",
+    "relative_humidity_2m": "%",
+    "wind_speed_10m": "km/h",
+    "pm10": "µg/m³",
+    "pm2_5": "µg/m³",
+}
+SCALES = {
+    "temperature_2m": "RdYlBu_r",
+    "relative_humidity_2m": "Tealgrn",
+    "wind_speed_10m": "Viridis",
+    "pm10": "YlOrRd",
+    "pm2_5": "YlOrRd",
+}
+DISPLAY_NAMES = {"Gabes": "Gabès", "Beja": "Béja", "Medenine": "Médenine", "Kebili": "Kébili"}
 DEFAULT_TREND_CITIES = ["Tunis", "Sfax", "Sousse", "Gabes", "Bizerte"]
 
-# Show a warning if the newest non-future row is older than this.
-STALE_AFTER_HOURS = 6
-
-# History window options for the sidebar (None = everything).
-HISTORY_OPTIONS = {
-    "Last 7 days": 7,
-    "Last 14 days": 14,
-    "Last 30 days": 30,
-    "Last 90 days": 90,
-    "All data": None,
+ICONS = {
+    "grid": '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>'
+    '<rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',
+    "thermo": '<path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/>',
+    "pin": '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
+    "cloud": '<path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>',
+    "wind": '<path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"/><path d="M9.6 4.6A2 2 0 1 1 11 8H2"/>'
+    '<path d="M12.6 19.4A2 2 0 1 0 14 16H2"/>',
 }
 
-# Approximate US EPA breakpoints (upper bound, label), applied to hourly values.
-PM25_LEVELS = [
-    (9.0, "🟢 Good"),
-    (35.4, "🟡 Moderate"),
-    (55.4, "🟠 Unhealthy for sensitive groups"),
-    (125.4, "🔴 Unhealthy"),
-    (225.4, "🟣 Very unhealthy"),
-    (float("inf"), "🟤 Hazardous"),
-]
-PM10_LEVELS = [
-    (54, "🟢 Good"),
-    (154, "🟡 Moderate"),
-    (254, "🟠 Unhealthy for sensitive groups"),
-    (354, "🔴 Unhealthy"),
-    (424, "🟣 Very unhealthy"),
-    (float("inf"), "🟤 Hazardous"),
-]
+st.markdown(
+    """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+.stApp {background: #0A1420;}
+[data-testid="stSidebar"] {background: #0E1B2B; border-right: 1px solid #1B2D44;}
+[data-testid="stHeader"] {background: transparent;}
+.stApp h1, .stApp h2, .stApp h3, .stApp p, .stApp label, .stApp li, .stTabs button,
+.card, .headline, .lede, .status {font-family: 'Plus Jakarta Sans', sans-serif;}
+.block-container {padding-top: 2.2rem; max-width: 1360px;}
+#MainMenu, footer {visibility: hidden;}
+.headline {font-size: 2.5rem; line-height: 1.15; font-weight: 800; color: #F1F6FC;
+           letter-spacing: -0.02em; margin: 0 0 0.5rem 0; max-width: 18em;}
+.lede {font-size: 1.05rem; color: #93A7C2; max-width: 44em; margin: 0 0 0.9rem 0;}
+.status {font-size: 0.9rem; color: #93A7C2; margin-bottom: 1.6rem;}
+.dot {display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+      margin-right: 8px; background: #2BC48A;}
+.dot.stale {background: #F2A93B;}
+.cards {display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px;}
+.card {background: #101E30; border: 1px solid #1E3148; border-radius: 12px; padding: 18px 20px 16px;}
+.card-label {display: flex; align-items: center; gap: 8px; font-size: 0.78rem; font-weight: 600;
+             letter-spacing: 0.06em; text-transform: uppercase; color: #8CA2BF;}
+.card-label svg {width: 15px; height: 15px; stroke: #4FB3E8; fill: none; stroke-width: 2;
+                 stroke-linecap: round; stroke-linejoin: round;}
+.card-title {font-size: 1.45rem; font-weight: 700; color: #F1F6FC; margin: 10px 0 4px;}
+.card-value {font-size: 2.6rem; font-weight: 800; color: #F1F6FC; line-height: 1.1;}
+.card-unit {font-size: 1.2rem; font-weight: 600; color: #7F95B2; margin-left: 6px;}
+.card-foot {font-size: 0.85rem; color: #7F95B2; margin-top: 8px;}
+.stTabs [data-baseweb="tab-list"] {gap: 28px; border-bottom: 1px solid #1E3148;}
+.stTabs [data-baseweb="tab"] {padding: 10px 2px; font-weight: 600; font-size: 1rem;}
+h3 {font-weight: 700; color: #F1F6FC;}
+.note {font-size: 0.85rem; color: #7F95B2;}
+</style>
+""",
+    unsafe_allow_html=True,
+)
 
 
-# --------------------------------------------------------------------------
-# Data access
-# --------------------------------------------------------------------------
 def database_url() -> str:
     try:
         url = st.secrets["DATABASE_URL"]
@@ -75,249 +99,233 @@ def get_engine():
     return create_engine(database_url(), pool_pre_ping=True)
 
 
-def tunis_now() -> pd.Timestamp:
-    """Current hour in Tunis local time, timezone-naive.
-
-    The pipeline is assumed to request `timezone=Africa/Tunis` from Open-Meteo,
-    so the stored `time` values are Tunis local time. If that ever changes,
-    this is the one place to update.
-    """
-    return pd.Timestamp.now(tz="Africa/Tunis").tz_localize(None).floor("h")
-
-
 @st.cache_data(ttl=600)
-def load_data(days: Optional[int]) -> pd.DataFrame:
-    """Load hourly rows, optionally only the last `days` days (plus forecast)."""
-    if days is None:
-        query = text("SELECT * FROM hourly_measurements ORDER BY time")
-        params = {}
-    else:
-        cutoff = (tunis_now() - pd.Timedelta(days=days)).to_pydatetime()
-        query = text(
-            "SELECT * FROM hourly_measurements WHERE time >= :cutoff ORDER BY time"
-        )
-        params = {"cutoff": cutoff}
-
-    data = pd.read_sql(query, get_engine(), params=params)
+def load_data() -> pd.DataFrame:
+    data = pd.read_sql("SELECT * FROM hourly_measurements ORDER BY time", get_engine())
     data["time"] = pd.to_datetime(data["time"])
-    # Safety net: a duplicated (time, city) pair would break pivots below.
-    # The real fix is a UNIQUE constraint + upsert in the pipeline.
-    return data.drop_duplicates(subset=["time", "city"], keep="last")
+    return data
 
 
-@st.cache_data(ttl=600)
-def csv_bytes(days: Optional[int]) -> bytes:
-    """CSV is built once per window, not on every Streamlit rerun."""
-    return load_data(days).to_csv(index=False).encode("utf-8")
+@st.cache_data
+def to_csv(data: pd.DataFrame) -> bytes:
+    return data.to_csv(index=False).encode("utf-8")
 
 
-# --------------------------------------------------------------------------
-# Helpers
-# --------------------------------------------------------------------------
 def latest_per_city(data: pd.DataFrame, now: pd.Timestamp) -> pd.DataFrame:
     """Most recent hour that is not in the future, for each city."""
-    past = data[data["time"] <= now]
+    past = data[data["time"] <= now.floor("h")]
     source = past if not past.empty else data
     return source.sort_values("time").groupby("city").tail(1).reset_index(drop=True)
 
 
-def extreme_row(frame: pd.DataFrame, column: str):
-    """Row with the highest value in `column`, or None if there is no data."""
-    valid = frame.dropna(subset=[column])
-    if valid.empty:
-        return None
-    return valid.loc[valid[column].idxmax()]
+def extreme(frame: pd.DataFrame, col: str):
+    sub = frame.dropna(subset=[col])
+    return None if sub.empty else sub.loc[sub[col].idxmax()]
 
 
-def show_kpi(slot, title: str, row, field: str, unit: str) -> None:
-    if row is None:
-        slot.metric(title, "n/a")
-    else:
-        slot.metric(f"{title} · {row['city']}", f"{row[field]:.1f} {unit}")
-
-
-def pm_category(value, levels) -> str:
-    if pd.isna(value):
-        return "n/a"
-    for upper, label in levels:
-        if value <= upper:
-            return label
-    return levels[-1][1]
-
-
-def value_to_hex(value, vmin: float, vmax: float) -> str:
-    """Blue (low) to red (high); grey when there is no value."""
-    if pd.isna(value):
-        return "#999999"
-    t = 0.5 if vmax <= vmin else (value - vmin) / (vmax - vmin)
-    low, high = (59, 130, 246), (239, 68, 68)
-    r, g, b = (round(lo + (hi - lo) * t) for lo, hi in zip(low, high))
-    return f"#{r:02x}{g:02x}{b:02x}"
-
-
-# --------------------------------------------------------------------------
-# Sidebar (part 1: needs to run before loading data)
-# --------------------------------------------------------------------------
-with st.sidebar:
-    st.header("Filters")
-    window_label = st.selectbox("History shown", list(HISTORY_OPTIONS), index=1)
-    days = HISTORY_OPTIONS[window_label]
-
-df = load_data(days)
-if df.empty:
-    st.warning(
-        "No data found for this period. Pick a longer window, or run the pipeline first."
+def card(icon: str, label: str, title: str, value: str, unit: str, foot: str) -> str:
+    return (
+        "<div class='card'>"
+        f"<div class='card-label'><svg viewBox='0 0 24 24'>{ICONS[icon]}</svg>{label}</div>"
+        f"<div class='card-title'>{title}</div>"
+        f"<div class='card-value'>{value}<span class='card-unit'>{unit}</span></div>"
+        f"<div class='card-foot'>{foot}</div>"
+        "</div>"
     )
+
+
+def extreme_card(icon: str, label: str, row, col: str, foot: str) -> str:
+    if row is None:
+        return card(icon, label, "No data", "—", "", foot)
+    name = DISPLAY_NAMES.get(row["city"], row["city"])
+    return card(icon, label, name, f"{row[col]:.1f}", UNITS[col], foot)
+
+
+def style(fig, height: int):
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        height=height,
+        margin=dict(l=0, r=0, t=10, b=0),
+        font=dict(family="Plus Jakarta Sans, sans-serif", color="#C9D6EA"),
+    )
+    return fig
+
+
+try:
+    df = load_data()
+except Exception:
+    st.error("Could not reach the database. It may be waking up, so refresh in a few seconds.")
     st.stop()
 
-now = tunis_now()
-current = latest_per_city(df, now)
-past = df[df["time"] <= now]
-n_cities = df["city"].nunique()
+if df.empty:
+    st.warning("The database is empty. Run the pipeline first.")
+    st.stop()
 
-# --------------------------------------------------------------------------
-# Header + data freshness
-# --------------------------------------------------------------------------
-st.title("🌍 Tunisia Weather & Air Quality Monitor")
-st.caption(
-    f"Hourly weather and air quality for {n_cities} Tunisian cities, "
-    "collected every day by an automated data pipeline."
-)
+now_tn = pd.Timestamp.now(tz="Africa/Tunis").tz_localize(None)  # times are stored in Tunis local time
+current = latest_per_city(df, now_tn)
+stale = df["time"].max() < now_tn
+shown_hour = current["time"].max()
 
-if past.empty:
-    st.warning("Only forecast data is available; there are no past observations yet.")
-else:
-    newest = past["time"].max()
-    age_hours = (now - newest) / pd.Timedelta(hours=1)
-    if age_hours > STALE_AFTER_HOURS:
-        st.warning(
-            f"Latest data is from {newest:%d %b %Y, %H:%M} ({age_hours:.0f} h ago). "
-            "The pipeline may have stalled, so the 'now' values below could be outdated."
-        )
-    else:
-        st.caption(f"Data as of {newest:%d %b %Y, %H:%M} (Tunis time).")
-
-# --------------------------------------------------------------------------
-# Sidebar (part 2)
-# --------------------------------------------------------------------------
 with st.sidebar:
+    st.markdown("### Controls")
     metric = st.selectbox("Measure", list(LABELS), format_func=LABELS.get)
     all_cities = sorted(df["city"].unique())
     defaults = [c for c in DEFAULT_TREND_CITIES if c in all_cities]
     trend_cities = st.multiselect("Cities in the trend chart", all_cities, default=defaults)
-    st.divider()
-    st.caption(f"{n_cities} cities · {len(df):,} hourly rows in view")
-    st.caption(f"Data from {df['time'].min():%d %b %Y} to {df['time'].max():%d %b %Y}")
+    if st.button("Refresh data"):
+        st.cache_data.clear()
+        st.rerun()
+    st.markdown(
+        f"<p class='note'>{df['city'].nunique()} cities, {len(df):,} hourly records, "
+        f"{df['time'].min():%d %b} to {df['time'].max():%d %b %Y}.</p>",
+        unsafe_allow_html=True,
+    )
 
+status_text = (
+    f"Data may be outdated. The newest record is from {df['time'].max():%d %b %Y, %H:%M}."
+    if stale
+    else f"Showing conditions for {shown_hour:%A %d %B, %H:%M} (Tunisia time)."
+)
+st.markdown(
+    "<div class='headline'>Weather and air quality across Tunisia</div>"
+    "<p class='lede'>Hourly temperature, humidity, wind and airborne dust for all 24 "
+    "governorates, refreshed every day by an automated data pipeline.</p>"
+    f"<div class='status'><span class='dot{' stale' if stale else ''}'></span>{status_text}</div>",
+    unsafe_allow_html=True,
+)
+
+cards = [
+    card("grid", "Coverage", "Governorates", str(df["city"].nunique()), "cities", "Monitored hourly"),
+    card("thermo", "National average", "Tunisia", f"{current['temperature_2m'].mean():.1f}", "°C",
+         "Average of all governorates"),
+    extreme_card("pin", "Hottest location", extreme(current, "temperature_2m"), "temperature_2m",
+                 "Current temperature"),
+    extreme_card("cloud", "Highest PM10", extreme(current, "pm10"), "pm10", "Airborne dust right now"),
+    extreme_card("wind", "Windiest location", extreme(current, "wind_speed_10m"), "wind_speed_10m",
+                 "Current wind speed"),
+]
+st.markdown(f"<div class='cards'>{''.join(cards)}</div>", unsafe_allow_html=True)
+
+st.write("")
 tab_overview, tab_trends, tab_data = st.tabs(["Overview", "Trends", "Data"])
 
-# --------------------------------------------------------------------------
-# Overview
-# --------------------------------------------------------------------------
 with tab_overview:
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Cities tracked", n_cities)
-    show_kpi(k2, "Hottest now", extreme_row(current, "temperature_2m"), "temperature_2m", "°C")
-    show_kpi(k3, "Highest PM10", extreme_row(current, "pm10"), "pm10", "µg/m³")
-    show_kpi(k4, "Windiest now", extreme_row(current, "wind_speed_10m"), "wind_speed_10m", "km/h")
+    st.markdown(f"### {LABELS[metric]} right now")
+    left, right = st.columns([3, 2], gap="large")
 
-    left, right = st.columns([1, 1])
+    coords = pd.DataFrame(
+        [{"city": c, "lat": lat, "lon": lon} for c, (lat, lon) in CITIES.items()]
+    )
+    map_df = current.merge(coords, on="city")
+    vals = map_df[metric]
+    span = vals.max() - vals.min()
+    if pd.isna(span) or span == 0:
+        span = 1
+    map_df["marker"] = (10 + 18 * (vals - vals.min()) / span).fillna(10)
 
     with left:
-        st.subheader(f"Ranking: {LABELS[metric]}")
-        ranking = current.dropna(subset=[metric])[["city", metric]]
-        if ranking.empty:
-            st.info("No data for this measure yet.")
-        else:
-            chart = (
-                alt.Chart(ranking)
-                .mark_bar()
-                .encode(
-                    x=alt.X(f"{metric}:Q", title=LABELS[metric]),
-                    y=alt.Y("city:N", sort="-x", title=None),
-                    tooltip=["city", alt.Tooltip(f"{metric}:Q", title=LABELS[metric], format=".1f")],
-                )
-                .properties(height=max(300, 22 * len(ranking)))
-            )
-            st.altair_chart(chart, width="stretch")
+        fig_map = px.scatter_map(
+            map_df,
+            lat="lat",
+            lon="lon",
+            color=metric,
+            size="marker",
+            size_max=24,
+            hover_name="city",
+            hover_data={metric: ":.1f", "lat": False, "lon": False, "marker": False},
+            labels={metric: LABELS[metric]},
+            color_continuous_scale=SCALES[metric],
+            map_style="carto-darkmatter",
+            center={"lat": 34.2, "lon": 9.6},
+            zoom=5.2,
+        )
+        fig_map.update_layout(coloraxis_colorbar=dict(title="", thickness=12, len=0.6))
+        st.plotly_chart(style(fig_map, 620))
 
     with right:
-        st.subheader(f"Map: {LABELS[metric]}")
-        coords = pd.DataFrame(
-            [{"city": c, "lat": lat, "lon": lon} for c, (lat, lon) in CITIES.items()]
+        ranking = current.dropna(subset=[metric])
+        fig_rank = px.bar(
+            ranking,
+            x=metric,
+            y="city",
+            orientation="h",
+            color=metric,
+            color_continuous_scale=SCALES[metric],
+            labels={metric: LABELS[metric], "city": ""},
         )
-        coords = coords.merge(current[["city", metric]], on="city", how="left")
-        vmin, vmax = coords[metric].min(), coords[metric].max()
-        coords["color"] = coords[metric].map(lambda v: value_to_hex(v, vmin, vmax))
-        coords["size"] = 9000
-        st.map(coords, latitude="lat", longitude="lon", color="color", size="size")
-        st.caption("Colour scale: blue = lowest value, red = highest value, grey = no data.")
+        fig_rank.update_coloraxes(showscale=False)
+        fig_rank.update_layout(yaxis=dict(categoryorder="total ascending", tickfont=dict(size=12)))
+        fig_rank.update_xaxes(showgrid=True, gridcolor="#1E3148")
+        st.plotly_chart(style(fig_rank, 620))
 
-    st.subheader("Air quality right now")
-    aq = current.dropna(subset=["pm2_5", "pm10"], how="all").copy()
-    if aq.empty:
-        st.info("No air quality data available yet.")
-    else:
-        aq["PM2.5 level"] = aq["pm2_5"].map(lambda v: pm_category(v, PM25_LEVELS))
-        aq["PM10 level"] = aq["pm10"].map(lambda v: pm_category(v, PM10_LEVELS))
-        aq = (
-            aq.sort_values("pm2_5", ascending=False)
-            .set_index("city")
-            .rename(columns={"pm2_5": LABELS["pm2_5"], "pm10": LABELS["pm10"]})
-        )
-        st.dataframe(
-            aq[[LABELS["pm2_5"], "PM2.5 level", LABELS["pm10"], "PM10 level"]].round(1),
-            width="stretch",
-        )
-        st.caption(
-            "Levels use approximate US EPA categories applied to hourly values, so they are "
-            "indicative only. For reference, the WHO 2021 24-hour guidelines are "
-            "15 µg/m³ for PM2.5 and 45 µg/m³ for PM10."
-        )
-
-# --------------------------------------------------------------------------
-# Trends
-# --------------------------------------------------------------------------
 with tab_trends:
-    st.subheader(LABELS[metric])
+    st.markdown(f"### {LABELS[metric]} over time")
     if trend_cities:
         view = df[df["city"].isin(trend_cities)]
-        st.line_chart(
-            view.pivot_table(index="time", columns="city", values=metric, aggfunc="last")
+        fig_line = px.line(
+            view,
+            x="time",
+            y=metric,
+            color="city",
+            labels={metric: LABELS[metric], "time": "", "city": ""},
+            color_discrete_sequence=px.colors.qualitative.Set2,
+        )
+        fig_line.update_traces(line=dict(width=2.4))
+        fig_line.add_vline(x=now_tn.to_pydatetime(), line_dash="dot", line_color="#7F95B2")
+        fig_line.update_layout(hovermode="x unified", legend=dict(orientation="h", y=1.08, title=None))
+        fig_line.update_yaxes(gridcolor="#1E3148")
+        fig_line.update_xaxes(gridcolor="#1E3148")
+        st.plotly_chart(style(fig_line, 480))
+        st.markdown(
+            "<p class='note'>The dotted line marks the current time. Values to its right are forecasts.</p>",
+            unsafe_allow_html=True,
         )
     else:
-        st.info("Pick at least one city in the sidebar.")
+        st.info("Choose at least one city in the sidebar to draw the chart.")
 
-    st.subheader("Summary by city")
-    if past.empty:
-        st.info("No past observations to summarise yet.")
-    else:
-        st.caption(
-            f"Past observations only (no forecast hours), "
-            f"{past['time'].min():%d %b} to {past['time'].max():%d %b %Y}. "
-            "Max is shown next to the mean because averages hide pollution spikes."
-        )
-        summary = past.groupby("city")[list(LABELS)].agg(["mean", "max"]).round(1)
-        summary.columns = [f"{LABELS[col]} · {stat}" for col, stat in summary.columns]
-        st.dataframe(summary, width="stretch")
-
-# --------------------------------------------------------------------------
-# Data
-# --------------------------------------------------------------------------
 with tab_data:
-    st.subheader("Latest values by city")
-    table = current.set_index("city")[["time", *LABELS]].rename(columns=LABELS)
-    st.dataframe(table, width="stretch")
+    st.markdown("### Latest values by governorate")
+    latest = current.set_index("city")[["time", *LABELS]]
+    latest[list(LABELS)] = latest[list(LABELS)].round(1)
+    st.dataframe(latest.rename(columns=LABELS))
+
+    st.markdown("### Averages and peaks over the whole period")
+    summary = df.groupby("city").agg(
+        avg_temp=("temperature_2m", "mean"),
+        avg_hum=("relative_humidity_2m", "mean"),
+        avg_wind=("wind_speed_10m", "mean"),
+        avg_pm10=("pm10", "mean"),
+        max_pm10=("pm10", "max"),
+        avg_pm25=("pm2_5", "mean"),
+        max_pm25=("pm2_5", "max"),
+    ).round(1)
+    summary.columns = [
+        "Avg temperature (°C)",
+        "Avg humidity (%)",
+        "Avg wind (km/h)",
+        "Avg PM10 (µg/m³)",
+        "Peak PM10 (µg/m³)",
+        "Avg PM2.5 (µg/m³)",
+        "Peak PM2.5 (µg/m³)",
+    ]
+    st.dataframe(summary)
+    st.markdown(
+        "<p class='note'>The period includes forecast hours, so averages mix past and predicted values.</p>",
+        unsafe_allow_html=True,
+    )
     st.download_button(
-        f"Download data in view (CSV) · {window_label.lower()}",
-        csv_bytes(days),
+        "Download all data (CSV)",
+        to_csv(df),
         file_name="tunisia_weather_air_quality.csv",
         mime="text/csv",
     )
 
 st.divider()
-st.caption(
-    "Sources: weather from Open-Meteo; air quality from CAMS (Copernicus Atmosphere "
-    "Monitoring Service) via Open-Meteo. Values are model-based estimates and forecasts, "
-    "not station measurements. City coordinates are approximate."
+st.markdown(
+    "<p class='note'>Weather comes from Open-Meteo. Air quality comes from CAMS (Copernicus "
+    "Atmosphere Monitoring Service) through Open-Meteo. All values are model-based forecasts, "
+    "not station measurements, and city coordinates are approximate.</p>",
+    unsafe_allow_html=True,
 )
