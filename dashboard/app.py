@@ -191,7 +191,7 @@ status_text = (
 st.markdown(
     "<div class='headline'>Weather and air quality across Tunisia</div>"
     "<p class='lede'>Hourly temperature, humidity, wind and airborne dust for all 24 "
-    "governorates, refreshed every day by an automated data pipeline.</p>"
+    "governorates, refreshed every hour by an automated data pipeline</p>"
     f"<div class='status'><span class='dot{' stale' if stale else ''}'></span>{status_text}</div>",
     unsafe_allow_html=True,
 )
