@@ -1,4 +1,4 @@
-name: Daily pipeline
+name: Hourly pipeline
 
 on:
   schedule:
