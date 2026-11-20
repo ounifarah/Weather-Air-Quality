@@ -1,8 +1,7 @@
 import logging
-import time
 
 from cities import CITIES
-from extract import extract
+from extract import extract_all
 from load import load
 from transform import clean
 
@@ -11,17 +10,17 @@ LOGGER = logging.getLogger(__name__)
 
 
 def run_etl() -> None:
-    """Extract, clean, and load data for every configured city."""
+    """Fetch all cities in one go, then clean and load each city."""
+    results = extract_all(CITIES)
+
     failed = []
-    for city, (latitude, longitude) in CITIES.items():
+    for city, (weather, air) in results.items():
         try:
-            weather, air = extract(city, latitude, longitude)
             rows = load(clean(weather, air, city))
             LOGGER.info("%s: saved %s rows", city, rows)
         except Exception:
             LOGGER.exception("%s failed", city)
             failed.append(city)
-        time.sleep(0.5)  # be polite to the free API
 
     LOGGER.info("Done: %s of %s cities succeeded", len(CITIES) - len(failed), len(CITIES))
     if failed:
